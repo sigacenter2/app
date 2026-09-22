@@ -2033,7 +2033,8 @@
             if (!target) return;
             const session = getSession();
             const vendors = getUsuarios().filter(user => user.lojaId === session?.lojaId && user.role === 'vendedor');
-            target.innerHTML = vendors.map(vendor => `<label class="flex items-center gap-2 rounded-lg bg-white px-2 py-2 text-[10px] font-bold text-slate-600"><input type="checkbox" data-prospecting-task-vendor value="${vendor.id}" class="h-4 w-4 rounded border-slate-300 text-amber-500"><span class="truncate">${escapeHtml(vendor.name)}</span></label>`).join('');
+            const selected = new Set([...target.querySelectorAll('[data-prospecting-task-vendor]:checked')].map(input => input.value));
+            target.innerHTML = vendors.map(vendor => `<label class="flex items-center gap-2 rounded-lg bg-white px-2 py-2 text-[10px] font-bold text-slate-600"><input type="checkbox" data-prospecting-task-vendor value="${vendor.id}" ${selected.has(vendor.id) ? 'checked' : ''} class="h-4 w-4 rounded border-slate-300 text-amber-500"><span class="truncate">${escapeHtml(vendor.name)}</span></label>`).join('');
         }
 
         function openProspectingMessage(message) {
@@ -4260,7 +4261,7 @@
             date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
             const monthInput = document.getElementById('monthly-goal-month');
             if (monthInput) {
-                monthInput.value = today.slice(0, 7);
+                if (!monthInput.value) monthInput.value = today.slice(0, 7);
             }
             if (!document.getElementById('weekly-goal-start').value) document.getElementById('weekly-goal-start').value = getLocalDateKey(date);
             date.setDate(date.getDate() + 6);
