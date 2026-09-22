@@ -5081,8 +5081,8 @@
                     pendingAddDate = null;
                     openConditionalModal();
                 } else {
-                    pendingAddDate = null;
-                    openServiceModal();
+                    pendingAddDate = selectedDate;
+                    openServiceModal(null, selectedDate);
                 }
             });
             document.getElementById('close-new-task').addEventListener('click', closeNewTaskModal);
