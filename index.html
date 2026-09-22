@@ -2710,13 +2710,14 @@
 
         async function saveManagerOutcomes(outcomes) {
             const session = getSession();
-            const normalized = outcomes.map((item, index) => ({ id: item.id || crypto.randomUUID(), lojaId: session.lojaId, code: item.code, label: item.label, order: index, active: item.active !== false }));
+            if (!isSupabaseUuid(session?.lojaId)) throw new Error('A loja atual não possui um ID válido.');
+            const normalized = outcomes.map((item, index) => ({ id: isSupabaseUuid(item.id) ? item.id : crypto.randomUUID(), lojaId: session.lojaId, code: String(item.code || '').trim(), label: String(item.label || '').trim(), order: index, active: item.active !== false })).filter(item => item.code && item.label);
             const rows = normalized.map(item => databaseRowFromApp('atendimento_resultados', item));
             const { error } = await sigaSupabase.from('atendimento_resultados').upsert(rows, { onConflict: 'id' });
             if (error) throw error;
             const keepIds = normalized.map(item => item.id);
             const previous = readStoredList('siga-atendimento-resultados');
-            const removedIds = previous.map(item => item.id).filter(id => !keepIds.includes(id));
+            const removedIds = previous.map(item => item.id).filter(id => isSupabaseUuid(id) && !keepIds.includes(id));
             if (removedIds.length) {
                 const { error: deleteError } = await sigaSupabase.from('atendimento_resultados').delete().in('id', removedIds);
                 if (deleteError) throw deleteError;
