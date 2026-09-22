@@ -917,7 +917,7 @@
             const normalizedTask = table === 'tarefas' ? normalizeTaskAssignment(item, scopedUserId) : item;
             const userId = normalizedTask.userId || normalizedTask.ownerId || normalizedTask.vendedorId || normalizedTask.responsavel_id || normalizedTask.vendorId || scopedUserId || effectiveUserId();
             const lojaId = resolveStoreId(item.lojaId, userId);
-            if (table === 'tarefas') return { id: item.id, loja_id: lojaId, titulo: item.title, horario: item.time, owner: item.owner || 'user', responsavel_id: userId, concluida: item.completed, observacao: item.observation || '', data: item.date, serie_id: item.seriesId || null, dias_repeticao: item.repeatDays || null };
+            if (table === 'tarefas') return { id: item.id, loja_id: lojaId, titulo: item.title, horario: item.time, owner: item.owner || 'user', responsavel_id: userId, concluida: item.completed, observacao: item.observation || '', data: item.date ? String(item.date).slice(0, 10) : null, serie_id: item.seriesId || null, dias_repeticao: item.repeatDays || null };
             if (table === 'vendas') return { id: item.id, loja_id: getSession()?.lojaId || null, vendedor_id: userId, cliente: item.client || '', valor: item.value, data_hora: item.datetime || item.dateTime, produtos: item.products || [] };
             if (table === 'atendimentos') return { id: item.id, loja_id: getSession()?.lojaId || null, vendedor_id: userId, cliente: item.client || '', resultado: item.outcome, resultado_label: item.outcomeLabel || '', valor: item.value || 0, telefone: item.phone || '', observacao: item.notes || '', produtos: item.products || [], produtos_apresentados: item.shownProducts || [], demanda: item.demand || '', venda_id: item.saleId || null, condicional_id: item.conditionalId || null, data_hora: item.datetime || item.dateTime };
             if (table === 'condicionais') return { id: item.id, loja_id: getSession()?.lojaId || null, vendedor_id: userId, cliente: item.client, telefone: item.phone, observacao: item.observation || '', produtos: item.products || [], prazo: item.dueDate || null, status: item.status || 'aberta', task_id: item.taskId || null, created_at: item.createdAt };
@@ -950,7 +950,7 @@
                     owner: row.owner ?? 'user',
                     completed: row.concluida ?? row.completed ?? false,
                     observation: row.observacao ?? row.observation ?? '',
-                    date: row.data ?? row.date,
+                    date: String(row.data ?? row.date ?? '').slice(0, 10),
                     seriesId: row.serie_id ?? row.seriesId,
                     repeatDays: row.dias_repeticao ?? row.repeatDays
                 };
@@ -2316,8 +2316,9 @@
         }
 
         function isTaskOverdueRaw(task, now) {
-            if (task.date && task.date < getLocalDateKey(now)) return true;
-            if (task.date && task.date > getLocalDateKey(now)) return false;
+            const taskDate = taskDateValue(task);
+            if (taskDate < getLocalDateKey(now)) return true;
+            if (taskDate > getLocalDateKey(now)) return false;
             const [hours, minutes] = task.time.split(':').map(Number);
             return hours < now.getHours() || (hours === now.getHours() && minutes < now.getMinutes());
         }
@@ -2517,6 +2518,8 @@
 
         function createManagerRecurringTasks(userId, title, time, repeatDays, repeatEndDate = '', startDate = getLocalDateKey()) {
             const targetUserId = String(userId).trim();
+            startDate = String(startDate || getLocalDateKey()).slice(0, 10);
+            repeatEndDate = String(repeatEndDate || '').slice(0, 10);
             const key = `siga-tarefas::${targetUserId}`;
             const current = readStoredList(key).map(task => normalizeTaskAssignment(task, targetUserId));
             const existingDates = buildRecurringTaskDateSet(current, title, time, startDate, repeatEndDate || null);
@@ -2544,7 +2547,7 @@
             renderManagerVendorFilter();
             const tasks = collectAllTasksForStore(session.lojaId)
                 .filter(task => {
-                    const taskDate = task.date || getLocalDateKey();
+                    const taskDate = taskDateValue(task);
                     if (taskDate !== managerOverviewSelectedDate) return false;
                     if (managerOverviewVendorFilter !== 'all' && task.vendedorId !== managerOverviewVendorFilter) return false;
                     return true;
@@ -3894,12 +3897,14 @@
 
         function saveTasks(tasks) {
             const previous = getTasks();
-            localStorage.setItem(taskStorageKey(), JSON.stringify(tasks));
-            syncStoredList(taskStorageKey(), tasks, previous.filter(item => !tasks.some(next => next.id === item.id)).map(item => item.id));
+            const normalizedTasks = tasks.map(task => ({ ...task, date: task.date ? String(task.date).slice(0, 10) : task.date }));
+            localStorage.setItem(taskStorageKey(), JSON.stringify(normalizedTasks));
+            syncStoredList(taskStorageKey(), normalizedTasks, previous.filter(item => !normalizedTasks.some(next => next.id === item.id)).map(item => item.id));
         }
 
         function taskDateValue(task) {
-            return task.date || getLocalDateKey();
+            const value = String(task?.date || '').trim();
+            return value ? value.slice(0, 10) : getLocalDateKey();
         }
 
         function isPastTask(task) {
@@ -4287,7 +4292,7 @@
         function renderTasksByDate(dateKey) {
             const tasks = sortedTasks().filter(task => {
                 const filterDate = dateKey || getLocalDateKey();
-                const taskDate = task.date || getLocalDateKey();
+                const taskDate = taskDateValue(task);
                 return taskDate === filterDate;
             });
             document.getElementById('tasks-list').innerHTML = tasks.length ? tasks.map(task => renderTask(task, true)).join('') : '<p class="rounded-2xl bg-white p-4 text-xs text-slate-400">Nenhuma tarefa para este dia.</p>';
@@ -4457,17 +4462,17 @@
             document.getElementById('service-period-label').textContent = servicePeriod === 'day' ? `Atendimentos de ${new Date(`${serviceSelectedDate}T12:00:00`).toLocaleDateString('pt-BR')}` : servicePeriod === 'week' ? `Atendimentos de ${new Date(`${serviceWeekStart}T12:00:00`).toLocaleDateString('pt-BR')} até ${new Date(`${serviceWeekEnd}T12:00:00`).toLocaleDateString('pt-BR')}` : `Atendimentos de ${serviceMonthLabel}`;
             document.getElementById('service-week-start').value = serviceWeekStart;
             document.getElementById('service-week-end').value = serviceWeekEnd;
-            const reasons = {}; services.filter(item => item.outcome !== 'converted').forEach(item => { reasons[item.outcomeLabel] = (reasons[item.outcomeLabel] || 0) + 1; }); const reasonEntries = Object.entries(reasons).sort((first, second) => second[1] - first[1]);
+            const reasons = {}; services.filter(item => item.outcome !== 'converted').forEach(item => { const reason = serviceOutcomeLabel(item); reasons[reason] = (reasons[reason] || 0) + 1; }); const reasonEntries = Object.entries(reasons).sort((first, second) => second[1] - first[1]);
             document.getElementById('service-reasons-report').innerHTML = reasonEntries.length ? reasonEntries.map(([reason, count]) => `<div class="flex justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600"><span>${escapeHtml(reason)}</span><strong class="text-indigo-600">${count}</strong></div>`).join('') : '<p class="text-xs text-slate-400">Nenhum motivo registrado.</p>';
             const unconvertedProducts = {}; services.filter(item => item.outcome !== 'converted').forEach(item => (item.shownProducts || []).forEach(product => { const key = product.name || product; unconvertedProducts[key] = (unconvertedProducts[key] || 0) + 1; })); const topUnconverted = Object.entries(unconvertedProducts).sort((first, second) => second[1] - first[1]).slice(0, 3);
             document.getElementById('service-unconverted-report').innerHTML = topUnconverted.length ? topUnconverted.map(([name, count]) => `<div class="flex justify-between rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700"><span>${escapeHtml(name)}</span><strong>${count}</strong></div>`).join('') : '<p class="text-xs text-slate-400">Nenhum produto sem conversão registrado.</p>';
-            document.getElementById('service-list').innerHTML = services.length ? services.map(item => `<article class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><div class="flex items-start justify-between gap-3"><div><p class="text-sm font-bold text-slate-700">${escapeHtml(item.client || 'Cliente não informado')}</p><p class="mt-1 text-[10px] font-semibold text-slate-400">${new Date(item.datetime).toLocaleDateString('pt-BR')} às ${new Date(item.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div><div class="flex items-center gap-2"><span class="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-600">${escapeHtml(item.outcomeLabel)}</span><button type="button" data-edit-service="${item.id}" aria-label="Editar atendimento" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600"><i data-lucide="pencil" class="h-4 w-4"></i></button><button type="button" data-delete-service="${item.id}" aria-label="Excluir atendimento" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></div>${item.notes ? `<p class="mt-3 text-xs text-slate-500">${escapeHtml(item.notes)}</p>` : ''}${item.demand ? `<p class="mt-2 text-[10px] font-semibold text-amber-600">Procurava: ${escapeHtml(item.demand)}</p>` : ''}${(item.shownProducts || []).length ? `<div class="mt-2 flex flex-wrap gap-1">${item.shownProducts.map(product => `<span class="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-600">${escapeHtml(product.name || product)}</span>`).join('')}</div>` : ''}</article>`).join('') : '<p class="rounded-2xl bg-white p-5 text-xs text-slate-400">Nenhum atendimento registrado neste período.</p>';
+            document.getElementById('service-list').innerHTML = services.length ? services.map(item => `<article class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><div class="flex items-start justify-between gap-3"><div><p class="text-sm font-bold text-slate-700">${escapeHtml(item.client || 'Cliente não informado')}</p><p class="mt-1 text-[10px] font-semibold text-slate-400">${new Date(item.datetime).toLocaleDateString('pt-BR')} às ${new Date(item.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p></div><div class="flex items-center gap-2"><span class="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-600">${escapeHtml(serviceOutcomeLabel(item))}</span><button type="button" data-edit-service="${item.id}" aria-label="Editar atendimento" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600"><i data-lucide="pencil" class="h-4 w-4"></i></button><button type="button" data-delete-service="${item.id}" aria-label="Excluir atendimento" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></div>${item.notes ? `<p class="mt-3 text-xs text-slate-500">${escapeHtml(item.notes)}</p>` : ''}${item.demand ? `<p class="mt-2 text-[10px] font-semibold text-amber-600">Procurava: ${escapeHtml(item.demand)}</p>` : ''}${(item.shownProducts || []).length ? `<div class="mt-2 flex flex-wrap gap-1">${item.shownProducts.map(product => `<span class="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-600">${escapeHtml(product.name || product)}</span>`).join('')}</div>` : ''}</article>`).join('') : '<p class="rounded-2xl bg-white p-5 text-xs text-slate-400">Nenhum atendimento registrado neste período.</p>';
             renderServiceDateCarousel(); lucide.createIcons();
         }
 
         function renderDashboardServices() {
             const services = servicesInPeriod().sort((first, second) => second.datetime.localeCompare(first.datetime)).slice(0, 3);
-            document.getElementById('dashboard-service-summary').innerHTML = services.length ? services.map(item => `<div class="rounded-xl bg-slate-50 p-3"><div class="flex items-center justify-between gap-2"><span class="truncate text-xs font-bold text-slate-700">${escapeHtml(item.client || 'Cliente não informado')}</span><span class="text-[10px] font-black text-indigo-600">${escapeHtml(item.outcomeLabel)}</span></div><p class="mt-1 text-[10px] text-slate-400">${new Date(item.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${item.notes ? ` · ${escapeHtml(item.notes)}` : ''}</p></div>`).join('') : '<p class="text-xs text-slate-400">Nenhum atendimento registrado hoje.</p>';
+            document.getElementById('dashboard-service-summary').innerHTML = services.length ? services.map(item => `<div class="rounded-xl bg-slate-50 p-3"><div class="flex items-center justify-between gap-2"><span class="truncate text-xs font-bold text-slate-700">${escapeHtml(item.client || 'Cliente não informado')}</span><span class="text-[10px] font-black text-indigo-600">${escapeHtml(serviceOutcomeLabel(item))}</span></div><p class="mt-1 text-[10px] text-slate-400">${new Date(item.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${item.notes ? ` · ${escapeHtml(item.notes)}` : ''}</p></div>`).join('') : '<p class="text-xs text-slate-400">Nenhum atendimento registrado hoje.</p>';
         }
 
         function analyticsRecordsForCurrentScope() {
@@ -4706,6 +4711,9 @@
         function getServiceOutcomes() {
             const stored = readStoredList('siga-atendimento-resultados');
             return (stored.length ? stored : defaultServiceOutcomes.map((item, index) => ({ ...item, id: item.code, order: index, active: true, lojaId: getSession()?.lojaId }))).filter(item => item.active !== false).sort((first, second) => Number(first.order || 0) - Number(second.order || 0));
+        }
+        function serviceOutcomeLabel(item) {
+            return item?.outcomeLabel || getServiceOutcomes().find(outcome => outcome.code === item?.outcome)?.label || item?.outcome || 'Outro motivo';
         }
         function renderServiceOutcomeOptions(selectedCode = '') {
             const outcomes = getServiceOutcomes();
@@ -5104,7 +5112,7 @@
                 const repeatDays = Array.from(document.querySelectorAll('.task-repeat-day:checked')).map(input => Number(input.value));
                 const repeatEndDate = document.getElementById('task-repeat-end-input').value;
                 const tasks = getTasks();
-                const taskDate = pendingAddDate || currentSelectedDate;
+                const taskDate = String(pendingAddDate || currentSelectedDate || getLocalDateKey()).slice(0, 10);
                 const existingDates = buildRecurringTaskDateSet(tasks, title, time, taskDate, repeatEndDate || null);
                 const newTasks = repeatEnabled && repeatDays.length
                     ? createRecurringTasks(title, time, taskDate, repeatDays, {
@@ -5186,16 +5194,16 @@
             document.getElementById('service-date-carousel').addEventListener('click', event => { const button = event.target.closest('[data-service-date]'); if (button) { serviceSelectedDate = button.dataset.serviceDate; renderServices(); } });
             document.getElementById('service-form').addEventListener('submit', async event => {
                 event.preventDefault();
-                const outcome = document.getElementById('service-outcome').value; const converted = outcome === 'converted'; const isConditional = outcome === 'conditional'; const products = getSelectedSaleProducts('service-product-options'); const shownProducts = getSelectedSaleProducts('service-shown-products'); const conditionalProducts = getSelectedSaleProducts('service-conditional-products'); const value = parseBrazilianNumber(document.getElementById('service-value').value); const phone = document.getElementById('service-phone').value.trim(); const conditionalTaskDate = document.getElementById('service-conditional-task-date').value; const conditionalTaskTime = document.getElementById('service-conditional-task-time').value;
+                const outcome = document.getElementById('service-outcome').value; const selectedOutcome = getServiceOutcomes().find(item => item.code === outcome); const outcomeLabel = selectedOutcome?.label || outcome || 'Outro motivo'; const converted = outcome === 'converted'; const isConditional = outcome === 'conditional'; const products = getSelectedSaleProducts('service-product-options'); const shownProducts = getSelectedSaleProducts('service-shown-products'); const conditionalProducts = getSelectedSaleProducts('service-conditional-products'); const value = parseBrazilianNumber(document.getElementById('service-value').value); const phone = document.getElementById('service-phone').value.trim(); const conditionalTaskDate = document.getElementById('service-conditional-task-date').value; const conditionalTaskTime = document.getElementById('service-conditional-task-time').value;
                 if (!outcome) return showToast('Escolha o que aconteceu no atendimento.');
                 if (converted && (!value || value <= 0 || !products.length)) return showToast('Para registrar uma venda, informe o valor e escolha ao menos um produto.');
                 if (isConditional && !phone) return showToast('Informe o telefone do cliente para a condicional.');
                 if (isConditional && !conditionalProducts.length) { document.getElementById('service-conditional-product-feedback').textContent = 'Escolha pelo menos um produto.'; return; }
                 if (isConditional && (!conditionalTaskDate || !conditionalTaskTime)) return showToast('Escolha a data e o horário da tarefa de cobrança.');
-                const previousService = editingServiceId ? getServices().find(item => item.id === editingServiceId) : null; const existingSaleId = previousService?.saleId; const existingConditionalId = previousService?.conditionalId; const now = new Date(); const serviceDate = pendingAddDate || getLocalDateKey(); const datetime = previousService?.datetime || `${serviceDate}T${now.toTimeString().slice(0, 8)}`; const labels = { converted: 'Venda realizada', conditional: 'Levou condicional', authorized: 'Venda permitida / aguardando fechamento', 'no-product': 'Não tínhamos o produto', 'just-looking': 'Só estava olhando', expensive: 'Achou caro', 'no-decision': 'Não tomou decisão', competitor: 'Preferiu a concorrência', 'return-later': 'Vai voltar depois', other: 'Outro motivo' };
+                const previousService = editingServiceId ? getServices().find(item => item.id === editingServiceId) : null; const existingSaleId = previousService?.saleId; const existingConditionalId = previousService?.conditionalId; const now = new Date(); const serviceDate = String(pendingAddDate || getLocalDateKey()).slice(0, 10); const datetime = previousService?.datetime || `${serviceDate}T${now.toTimeString().slice(0, 8)}`;
                 const client = document.getElementById('service-client').value.trim();
                 if (!client && !(await confirmMissingClientName('atendimento'))) return;
-                const service = { id: editingServiceId || crypto.randomUUID(), client, phone, outcome, outcomeLabel: labels[outcome], value: converted ? value : 0, products: converted ? products : (isConditional ? conditionalProducts : []), shownProducts: (!converted && !isConditional) ? shownProducts : [], demand: document.getElementById('service-demand').value.trim(), notes: document.getElementById('service-notes').value.trim(), datetime, date: datetime.slice(0, 10), saleId: existingSaleId, conditionalId: existingConditionalId };
+                const service = { id: editingServiceId || crypto.randomUUID(), client, phone, outcome, outcomeLabel, value: converted ? value : 0, products: converted ? products : (isConditional ? conditionalProducts : []), shownProducts: (!converted && !isConditional) ? shownProducts : [], demand: document.getElementById('service-demand').value.trim(), notes: document.getElementById('service-notes').value.trim(), datetime, date: datetime.slice(0, 10), saleId: existingSaleId, conditionalId: existingConditionalId };
                 const services = getServices(); saveServices(editingServiceId ? services.map(item => item.id === editingServiceId ? service : item) : [...services, service]);
                 if (converted) { const sales = getSales(); const sale = { id: existingSaleId || crypto.randomUUID(), client, value, datetime, date: service.date, products }; saveSales(existingSaleId ? sales.map(item => item.id === existingSaleId ? sale : item) : [...sales, sale]); service.saleId = sale.id; saveServices(getServices().map(item => item.id === service.id ? service : item)); } else if (existingSaleId) saveSales(getSales().filter(item => item.id !== existingSaleId));
                 if (isConditional) { const conditional = upsertConditionalRecord({ id: existingConditionalId, client, phone, products: conditionalProducts, observation: service.notes, taskDate: conditionalTaskDate, taskTime: conditionalTaskTime }); service.conditionalId = conditional.id; saveServices(getServices().map(item => item.id === service.id ? service : item)); } else if (existingConditionalId) { const conditional = getConditionals().find(item => item.id === existingConditionalId); saveConditionals(getConditionals().filter(item => item.id !== existingConditionalId)); if (conditional?.taskId) saveTasks(getTasks().filter(item => item.id !== conditional.taskId)); renderConditionals(); renderDashboardConditionals(); }
