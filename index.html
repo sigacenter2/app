@@ -1450,6 +1450,16 @@
             return openSiteDialog({ title, message, confirmLabel: 'Confirmar' });
         }
 
+        async function confirmNonTodayLaunchDate(date, itemLabel) {
+            const normalizedDate = String(date || '').slice(0, 10);
+            const today = getLocalDateKey();
+            if (!normalizedDate || normalizedDate === today) return normalizedDate || today;
+            const selectedDate = new Date(`${normalizedDate}T12:00:00`).toLocaleDateString('pt-BR');
+            const result = await siteChoice(`A data selecionada (${selectedDate}) não é hoje. Deseja lançar ${itemLabel} nessa data?`, 'Manter data', 'Lançar hoje', 'Confirmar data');
+            if (result === null) return null;
+            return result ? normalizedDate : today;
+        }
+
         async function sitePrompt(message, value = '', title = 'Informe os dados') {
             const result = await openSiteDialog({ title, message, input: true, value, confirmLabel: 'Salvar' });
             return result === null ? null : result;
@@ -2218,7 +2228,7 @@
                 const editMessage = event.target.closest('[data-edit-prospecting-message]');
                 if (editMessage) openProspectingMessage(getProspectingMessages().find(item => item.id === editMessage.dataset.editProspectingMessage));
             });
-            document.getElementById('manager-task-form').addEventListener('submit', event => {
+            document.getElementById('manager-task-form').addEventListener('submit', async event => {
                 event.preventDefault();
                 const title = document.getElementById('manager-task-title').value.trim();
                 const time = document.getElementById('manager-task-time').value;
@@ -2228,7 +2238,9 @@
                 const selectedVendors = Array.from(document.querySelectorAll('[data-manager-task-vendor]:checked')).map(input => input.value);
                 if (!repeatDays.length) { document.getElementById('manager-task-feedback').textContent = 'Selecione pelo menos um dia da semana.'; return; }
                 if (!selectedVendors.length) { document.getElementById('manager-task-feedback').textContent = 'Selecione pelo menos um vendedor.'; return; }
-                selectedVendors.forEach(userId => createManagerRecurringTasks(userId, title, time, repeatDays, repeatEndDate, startDate));
+                const launchDate = await confirmNonTodayLaunchDate(startDate, 'a tarefa');
+                if (!launchDate) return;
+                selectedVendors.forEach(userId => createManagerRecurringTasks(userId, title, time, repeatDays, repeatEndDate, launchDate));
                 document.getElementById('manager-task-feedback').textContent = `Tarefa lançada para ${selectedVendors.length} vendedor${selectedVendors.length === 1 ? '' : 'es'}.`;
                 event.target.reset(); document.getElementById('manager-task-repeat-end').value = ''; document.getElementById('manager-task-start-date').value = getLocalDateKey(); renderManagerTaskWeekdays(); renderManagerTaskVendors(); renderManagerOverview();
             });
@@ -2768,7 +2780,7 @@
                 const remove = event.target.closest('[data-delete-manager-outcome]');
                 if (remove && await siteConfirm('Excluir este resultado?')) { try { await saveManagerOutcomes(getServiceOutcomes().filter(item => item.id !== remove.dataset.deleteManagerOutcome)); showToast('Resultado excluído.'); } catch (error) { showToast(`Falha ao excluir resultado: ${error.message}`, 'error'); } }
             });
-            document.getElementById('manager-store-sale-form').addEventListener('submit', event => {
+            document.getElementById('manager-store-sale-form').addEventListener('submit', async event => {
                 event.preventDefault();
                 const session = getSession();
                 const storeKey = `siga-vendas-loja::${session.lojaId}`;
@@ -2776,7 +2788,11 @@
                 if (!value || value <= 0) { showToast('Informe um valor de venda válido.'); return; }
                 const sales = getManagerStoreSales();
                 const editingId = event.target.dataset.editingId;
-                const sale = { id: editingId || crypto.randomUUID(), client: document.getElementById('manager-store-sale-client').value.trim(), value, date: document.getElementById('manager-store-sale-date').value, datetime: `${document.getElementById('manager-store-sale-date').value}T12:00:00`, storeSale: true, lojaId: session.lojaId };
+                const selectedDate = document.getElementById('manager-store-sale-date').value;
+                const launchDate = editingId ? selectedDate : await confirmNonTodayLaunchDate(selectedDate, 'a venda');
+                if (!launchDate) return;
+                const saleDate = editingId ? selectedDate : launchDate;
+                const sale = { id: editingId || crypto.randomUUID(), client: document.getElementById('manager-store-sale-client').value.trim(), value, date: saleDate, datetime: `${saleDate}T12:00:00`, storeSale: true, lojaId: session.lojaId };
                 const updatedSales = editingId ? sales.map(item => item.id === editingId ? sale : item) : [...sales, sale];
                 localStorage.setItem(storeKey, JSON.stringify(updatedSales));
                 syncStoredList(storeKey, updatedSales);
@@ -5112,7 +5128,9 @@
                 const repeatDays = Array.from(document.querySelectorAll('.task-repeat-day:checked')).map(input => Number(input.value));
                 const repeatEndDate = document.getElementById('task-repeat-end-input').value;
                 const tasks = getTasks();
-                const taskDate = String(pendingAddDate || currentSelectedDate || getLocalDateKey()).slice(0, 10);
+                const selectedTaskDate = String(pendingAddDate || currentSelectedDate || getLocalDateKey()).slice(0, 10);
+                const taskDate = await confirmNonTodayLaunchDate(selectedTaskDate, 'a tarefa');
+                if (!taskDate) return;
                 const existingDates = buildRecurringTaskDateSet(tasks, title, time, taskDate, repeatEndDate || null);
                 const newTasks = repeatEnabled && repeatDays.length
                     ? createRecurringTasks(title, time, taskDate, repeatDays, {
@@ -5177,7 +5195,9 @@
                 const client = document.getElementById('sale-client-input').value.trim();
                 if (!client && !(await confirmMissingClientName('venda'))) return;
                 const selectedSaleDate = pendingAddDate || datetime.slice(0, 10);
-                const saleDatetime = editingSaleId ? datetime : `${selectedSaleDate}T${datetime.slice(11, 16)}`;
+                const launchDate = editingSaleId ? selectedSaleDate : await confirmNonTodayLaunchDate(selectedSaleDate, 'a venda');
+                if (!launchDate) return;
+                const saleDatetime = editingSaleId ? datetime : `${launchDate}T${datetime.slice(11, 16)}`;
                 const sale = { id: editingSaleId || crypto.randomUUID(), client, value, datetime: saleDatetime, date: saleDatetime.slice(0, 10), products };
                 const updatedSales = editingSaleId ? sales.map(item => item.id === editingSaleId ? sale : item) : [...sales, sale];
                 saveSales(updatedSales);
@@ -5200,13 +5220,13 @@
                 if (isConditional && !phone) return showToast('Informe o telefone do cliente para a condicional.');
                 if (isConditional && !conditionalProducts.length) { document.getElementById('service-conditional-product-feedback').textContent = 'Escolha pelo menos um produto.'; return; }
                 if (isConditional && (!conditionalTaskDate || !conditionalTaskTime)) return showToast('Escolha a data e o horário da tarefa de cobrança.');
-                const previousService = editingServiceId ? getServices().find(item => item.id === editingServiceId) : null; const existingSaleId = previousService?.saleId; const existingConditionalId = previousService?.conditionalId; const now = new Date(); const serviceDate = String(pendingAddDate || getLocalDateKey()).slice(0, 10); const datetime = previousService?.datetime || `${serviceDate}T${now.toTimeString().slice(0, 8)}`;
+                const previousService = editingServiceId ? getServices().find(item => item.id === editingServiceId) : null; const existingSaleId = previousService?.saleId; const existingConditionalId = previousService?.conditionalId; const now = new Date(); const serviceDate = String(pendingAddDate || getLocalDateKey()).slice(0, 10); const launchServiceDate = converted && !editingServiceId ? await confirmNonTodayLaunchDate(serviceDate, 'a venda') : serviceDate; if (!launchServiceDate) return; const launchConditionalTaskDate = isConditional && !existingConditionalId ? await confirmNonTodayLaunchDate(conditionalTaskDate, 'a tarefa') : conditionalTaskDate; if (!launchConditionalTaskDate) return; const datetime = previousService?.datetime || `${launchServiceDate}T${now.toTimeString().slice(0, 8)}`;
                 const client = document.getElementById('service-client').value.trim();
                 if (!client && !(await confirmMissingClientName('atendimento'))) return;
                 const service = { id: editingServiceId || crypto.randomUUID(), client, phone, outcome, outcomeLabel, value: converted ? value : 0, products: converted ? products : (isConditional ? conditionalProducts : []), shownProducts: (!converted && !isConditional) ? shownProducts : [], demand: document.getElementById('service-demand').value.trim(), notes: document.getElementById('service-notes').value.trim(), datetime, date: datetime.slice(0, 10), saleId: existingSaleId, conditionalId: existingConditionalId };
                 const services = getServices(); saveServices(editingServiceId ? services.map(item => item.id === editingServiceId ? service : item) : [...services, service]);
                 if (converted) { const sales = getSales(); const sale = { id: existingSaleId || crypto.randomUUID(), client, value, datetime, date: service.date, products }; saveSales(existingSaleId ? sales.map(item => item.id === existingSaleId ? sale : item) : [...sales, sale]); service.saleId = sale.id; saveServices(getServices().map(item => item.id === service.id ? service : item)); } else if (existingSaleId) saveSales(getSales().filter(item => item.id !== existingSaleId));
-                if (isConditional) { const conditional = upsertConditionalRecord({ id: existingConditionalId, client, phone, products: conditionalProducts, observation: service.notes, taskDate: conditionalTaskDate, taskTime: conditionalTaskTime }); service.conditionalId = conditional.id; saveServices(getServices().map(item => item.id === service.id ? service : item)); } else if (existingConditionalId) { const conditional = getConditionals().find(item => item.id === existingConditionalId); saveConditionals(getConditionals().filter(item => item.id !== existingConditionalId)); if (conditional?.taskId) saveTasks(getTasks().filter(item => item.id !== conditional.taskId)); renderConditionals(); renderDashboardConditionals(); }
+                if (isConditional) { const conditional = upsertConditionalRecord({ id: existingConditionalId, client, phone, products: conditionalProducts, observation: service.notes, taskDate: launchConditionalTaskDate, taskTime: conditionalTaskTime }); service.conditionalId = conditional.id; saveServices(getServices().map(item => item.id === service.id ? service : item)); } else if (existingConditionalId) { const conditional = getConditionals().find(item => item.id === existingConditionalId); saveConditionals(getConditionals().filter(item => item.id !== existingConditionalId)); if (conditional?.taskId) saveTasks(getTasks().filter(item => item.id !== conditional.taskId)); renderConditionals(); renderDashboardConditionals(); }
                 pendingAddDate = null;
                 closeServiceModal(); refreshVisibleDataViews();
             });
@@ -5220,7 +5240,9 @@
                 const taskTime = document.getElementById('conditional-task-time').value;
                 if (!products.length) { document.getElementById('conditional-product-feedback').textContent = 'Escolha pelo menos um produto.'; return; }
                 if (!taskDate || !taskTime) return showToast('Escolha a data e o horário da tarefa de cobrança.');
-                upsertConditionalRecord({ id: editingConditionalId, client, phone, products, observation: document.getElementById('conditional-observation').value.trim(), taskDate, taskTime });
+                const launchTaskDate = editingConditionalId ? taskDate : await confirmNonTodayLaunchDate(taskDate, 'a tarefa');
+                if (!launchTaskDate) return;
+                upsertConditionalRecord({ id: editingConditionalId, client, phone, products, observation: document.getElementById('conditional-observation').value.trim(), taskDate: launchTaskDate, taskTime });
                 pendingAddDate = null;
                 closeConditionalModal();
                 refreshVisibleDataViews();
