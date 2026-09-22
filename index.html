@@ -2126,7 +2126,18 @@
             const dates = prospectingTaskDates(list);
             selectedVendors.forEach(userId => {
                 const key = `siga-tarefas::${userId}`;
-                const current = readStoredList(key);
+                const rawTasks = readStoredList(key);
+                const seenDates = new Set();
+                const removedDuplicateIds = [];
+                const current = rawTasks.filter(task => {
+                    if (task.prospectingListId !== list.id) return true;
+                    if (seenDates.has(task.date)) {
+                        if (task.id) removedDuplicateIds.push(task.id);
+                        return false;
+                    }
+                    seenDates.add(task.date);
+                    return true;
+                });
                 const existingTasks = current.filter(task => task.prospectingListId === list.id);
                 const existing = new Set(existingTasks.map(task => task.date));
                 const tasks = dates.filter(date => !existing.has(date)).map(date => ({ id: crypto.randomUUID(), title: `Prospecção: ${list.name}`, time: list.taskTime, owner: 'manager', userId, ownerId: userId, vendedorId: userId, responsavel_id: userId, vendorId: userId, completed: false, observation: '', date, prospectingListId: list.id, prospectingTargetMode: list.taskTargetMode || 'minimum', prospectingTarget: list.taskTargetMode === 'total' ? 'all' : Number(list.taskTarget || 1) }));
@@ -2137,7 +2148,7 @@
                 const previousViewing = session.viewingUserId;
                 session.viewingUserId = userId;
                 saveSession(session);
-                syncStoredList(key, updated);
+                syncStoredList(key, updated, removedDuplicateIds);
                 session.viewingUserId = previousViewing;
                 saveSession(session);
             });
