@@ -2704,7 +2704,7 @@
             const target = document.getElementById('manager-outcome-list');
             if (!target) return;
             const outcomes = getServiceOutcomes();
-            target.innerHTML = outcomes.map(item => `<article class="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><div><p class="text-xs font-black text-slate-700">${escapeHtml(item.label)}</p><p class="mt-1 text-[10px] text-slate-400">${escapeHtml(item.code)}</p></div><div class="flex gap-1"><button type="button" data-edit-manager-outcome="${item.id}" class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-indigo-600" aria-label="Editar resultado"><i data-lucide="pencil" class="h-4 w-4"></i></button><button type="button" data-delete-manager-outcome="${item.id}" class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Excluir resultado"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></article>`).join('');
+            target.innerHTML = outcomes.map((item, index) => `<article class="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><div><p class="text-xs font-black text-slate-700">${escapeHtml(item.label)}</p><p class="mt-1 text-[10px] text-slate-400">${escapeHtml(item.code)}</p></div><div class="flex gap-1"><button type="button" data-move-manager-outcome="${item.id}" data-direction="up" ${index === 0 ? 'disabled' : ''} class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Mover resultado para cima"><i data-lucide="chevron-up" class="h-4 w-4"></i></button><button type="button" data-move-manager-outcome="${item.id}" data-direction="down" ${index === outcomes.length - 1 ? 'disabled' : ''} class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Mover resultado para baixo"><i data-lucide="chevron-down" class="h-4 w-4"></i></button><button type="button" data-edit-manager-outcome="${item.id}" class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-indigo-600" aria-label="Editar resultado"><i data-lucide="pencil" class="h-4 w-4"></i></button><button type="button" data-delete-manager-outcome="${item.id}" class="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Excluir resultado"><i data-lucide="trash-2" class="h-4 w-4"></i></button></div></article>`).join('');
             lucide.createIcons();
         }
 
@@ -2750,6 +2750,16 @@
                 try { await saveManagerOutcomes([...outcomes, { id, code, label, active: true }]); event.target.reset(); document.getElementById('manager-outcome-editing-id').value = ''; showToast('Resultado salvo.'); } catch (error) { showToast(`Falha ao salvar resultado: ${error.message}`, 'error'); }
             });
             document.getElementById('manager-outcome-list').addEventListener('click', async event => {
+                const move = event.target.closest('[data-move-manager-outcome]');
+                if (move) {
+                    const outcomes = getServiceOutcomes();
+                    const index = outcomes.findIndex(item => item.id === move.dataset.moveManagerOutcome);
+                    const nextIndex = index + (move.dataset.direction === 'up' ? -1 : 1);
+                    if (index < 0 || nextIndex < 0 || nextIndex >= outcomes.length) return;
+                    [outcomes[index], outcomes[nextIndex]] = [outcomes[nextIndex], outcomes[index]];
+                    try { await saveManagerOutcomes(outcomes); showToast('Ordem atualizada.'); } catch (error) { showToast(`Falha ao atualizar ordem: ${error.message}`, 'error'); }
+                    return;
+                }
                 const edit = event.target.closest('[data-edit-manager-outcome]');
                 if (edit) { const item = getServiceOutcomes().find(outcome => outcome.id === edit.dataset.editManagerOutcome); if (item) { document.getElementById('manager-outcome-editing-id').value = item.id; document.getElementById('manager-outcome-code').value = item.code; document.getElementById('manager-outcome-label').value = item.label; } return; }
                 const remove = event.target.closest('[data-delete-manager-outcome]');
