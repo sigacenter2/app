@@ -858,7 +858,6 @@
         };
 
         const supabaseRetentionPolicy = {
-            tarefas: { days: 60, column: 'data' },
             vendas: { days: 60, column: 'data_hora' },
             atendimentos: { days: 60, column: 'data_hora' },
             condicionais: { days: 60, column: 'created_at' },
@@ -1071,11 +1070,7 @@
             const { data, error } = await sigaSupabase.from('tarefas').select('id').eq('loja_id', session.lojaId);
             if (error || !Array.isArray(data)) return;
             const staleIds = data.map(row => row.id).filter(id => id && isSupabaseUuid(id) && !localTaskIds.has(id));
-            if (!staleIds.length) return;
-            const { error: deleteError } = await sigaSupabase.from('tarefas').delete().in('id', staleIds);
-            if (deleteError) {
-                console.warn('Falha ao limpar tarefas órfãs no Supabase:', deleteError.message);
-            }
+            if (staleIds.length) console.warn('Tarefas presentes no Supabase e ausentes no cache local foram preservadas:', staleIds.length);
         }
 
         async function flushSupabaseSync(storageKey, table) {
@@ -1312,7 +1307,7 @@
 
         function getStorageRetentionDays(storageKey) {
             if (storageKey === 'siga-metas' || storageKey === 'siga-metas-semanais' || storageKey.startsWith('siga-vendas-loja')) return 365;
-            if (storageKey === 'siga-tarefas' || storageKey.startsWith('siga-tarefas::') || storageKey === 'siga-vendas' || storageKey.startsWith('siga-vendas::') || storageKey === 'siga-atendimentos' || storageKey.startsWith('siga-atendimentos::') || storageKey === 'siga-condicionais' || storageKey.startsWith('siga-condicionais::') || storageKey === 'siga-humor-registros') return 60;
+            if (storageKey === 'siga-vendas' || storageKey.startsWith('siga-vendas::') || storageKey === 'siga-atendimentos' || storageKey.startsWith('siga-atendimentos::') || storageKey === 'siga-condicionais' || storageKey.startsWith('siga-condicionais::') || storageKey === 'siga-humor-registros') return 60;
             return null;
         }
 
@@ -2184,26 +2179,33 @@
             document.getElementById('manager-prospecting-button').addEventListener('click', () => { location.hash = 'manager-prospecting'; });
             document.getElementById('prospecting-list-form').addEventListener('submit', event => {
                 event.preventDefault();
-                const name = document.getElementById('prospecting-list-name').value.trim();
-                const names = document.getElementById('prospecting-names').value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
-                const phones = document.getElementById('prospecting-phones').value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
-                if (!name || !names.length || names.length !== phones.length) return showToast('Informe a mesma quantidade de nomes e WhatsApps, na mesma ordem.', 'error');
-                const editingId = document.getElementById('prospecting-editing-id').value;
-                const allLists = readStoredList(prospectingStorageKey);
-                const existing = allLists.find(list => list.id === editingId);
-                const contacts = names.map((contactName, index) => {
-                    const oldContact = existing?.contacts?.find(contact => contact.id === `${editingId || 'new'}-${index}`);
-                    return { id: oldContact?.id || `${editingId || crypto.randomUUID()}-${index}`, name: contactName, phone: phones[index], sentBy: oldContact?.sentBy || [], sentOn: oldContact?.sentOn || {} };
-                });
-                const list = { ...(existing || {}), id: editingId || crypto.randomUUID(), lojaId: getSession()?.lojaId, name, days: [...prospectingSelectedDays], contacts, messages: existing?.messages || getProspectingMessages(), createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
-                list.taskTime = document.getElementById('prospecting-task-time').value || '10:00';
-                list.taskTargetMode = document.getElementById('prospecting-task-target-mode').value || 'minimum';
-                list.taskTarget = Math.max(1, Number(document.getElementById('prospecting-task-target').value || 1));
-                list.taskVendors = Array.from(document.querySelectorAll('[data-prospecting-task-vendor]:checked')).map(input => input.value);
-                if (!list.taskVendors.length) return showToast('Selecione pelo menos um vendedor para esta lista.', 'error');
-                saveProspectingLists(editingId ? allLists.map(item => item.id === editingId ? list : item) : [...allLists, list]);
-                createProspectingTasksForList(list);
-                event.target.reset(); document.getElementById('prospecting-editing-id').value = ''; document.getElementById('prospecting-task-time').value = '10:00'; document.getElementById('prospecting-task-target-mode').value = 'minimum'; document.getElementById('prospecting-task-target').value = '1'; document.querySelectorAll('[data-prospecting-task-vendor]').forEach(input => { input.checked = false; }); document.getElementById('prospecting-cancel-edit').classList.add('hidden'); renderManagerProspecting();
+                try {
+                    const session = getSession();
+                    const name = document.getElementById('prospecting-list-name').value.trim();
+                    const names = document.getElementById('prospecting-names').value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+                    const phones = document.getElementById('prospecting-phones').value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+                    if (!session?.lojaId) return showToast('Não foi possível identificar a loja atual.', 'error');
+                    if (!name || !names.length || names.length !== phones.length) return showToast('Informe a mesma quantidade de nomes e WhatsApps, na mesma ordem.', 'error');
+                    const editingId = document.getElementById('prospecting-editing-id').value;
+                    const allLists = readStoredList(prospectingStorageKey);
+                    const existing = allLists.find(list => list.id === editingId);
+                    const contacts = names.map((contactName, index) => {
+                        const oldContact = existing?.contacts?.find(contact => contact.id === `${editingId || 'new'}-${index}`);
+                        return { id: oldContact?.id || `${editingId || crypto.randomUUID()}-${index}`, name: contactName, phone: phones[index], sentBy: oldContact?.sentBy || [], sentOn: oldContact?.sentOn || {} };
+                    });
+                    const list = { ...(existing || {}), id: editingId || crypto.randomUUID(), lojaId: session.lojaId, name, days: [...prospectingSelectedDays], contacts, messages: existing?.messages || getProspectingMessages(), createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+                    list.taskTime = document.getElementById('prospecting-task-time').value || '10:00';
+                    list.taskTargetMode = document.getElementById('prospecting-task-target-mode').value || 'minimum';
+                    list.taskTarget = Math.max(1, Number(document.getElementById('prospecting-task-target').value || 1));
+                    list.taskVendors = Array.from(document.querySelectorAll('[data-prospecting-task-vendor]:checked')).map(input => input.value);
+                    saveProspectingLists(editingId ? allLists.map(item => item.id === editingId ? list : item) : [...allLists, list]);
+                    if (list.taskVendors.length) createProspectingTasksForList(list);
+                    event.target.reset(); document.getElementById('prospecting-editing-id').value = ''; document.getElementById('prospecting-task-time').value = '10:00'; document.getElementById('prospecting-task-target-mode').value = 'minimum'; document.getElementById('prospecting-task-target').value = '1'; document.querySelectorAll('[data-prospecting-task-vendor]').forEach(input => { input.checked = false; }); document.getElementById('prospecting-cancel-edit').classList.add('hidden'); renderManagerProspecting();
+                    showToast(list.taskVendors.length ? 'Lista salva e tarefas automáticas atualizadas.' : 'Lista salva. Selecione vendedores para criar tarefas automáticas.');
+                } catch (error) {
+                    console.error('Falha ao salvar lista de prospecção:', error);
+                    showToast(`Não foi possível salvar a lista: ${error.message}`, 'error');
+                }
             });
             document.getElementById('prospecting-cancel-edit').addEventListener('click', () => { document.getElementById('prospecting-list-form').reset(); prospectingSelectedDays.clear(); renderProspectingCalendar(); document.getElementById('prospecting-editing-id').value = ''; document.getElementById('prospecting-cancel-edit').classList.add('hidden'); });
             document.getElementById('prospecting-message-form').addEventListener('submit', event => {
@@ -3827,26 +3829,6 @@
         function taskStorageKey() { return scopedKey('siga-tarefas'); }
 
         function cleanupOldTasks() {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            const monthStartKey = getLocalDateKey(monthStart);
-            const monthEndKey = getLocalDateKey(monthEnd);
-            const keys = Object.keys(localStorage).filter(key => key.startsWith('siga-tarefas::'));
-            keys.forEach(key => {
-                try {
-                    const tasks = JSON.parse(localStorage.getItem(key)) || [];
-                    const filtered = Array.isArray(tasks) ? tasks.filter(task => {
-                        const taskDate = String(task.date || getLocalDateKey()).slice(0, 10);
-                        return taskDate >= monthStartKey && taskDate <= monthEndKey;
-                    }) : [];
-                    localStorage.setItem(key, JSON.stringify(filtered));
-                    if (Array.isArray(tasks)) syncStoredList(key, filtered, tasks.filter(task => !filtered.some(next => next.id === task.id)).map(task => task.id));
-                } catch (error) {
-                    console.warn('Erro ao limpar tarefas antigas:', error);
-                }
-            });
         }
 
         function extendRecurringTaskHorizon(tasks) {
