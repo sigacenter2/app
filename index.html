@@ -555,7 +555,7 @@
     <!-- TELA DE PROSPECCAO -->
     <section id="prospecting-page" class="hidden max-w-5xl mx-auto p-4 space-y-6">
         <div class="flex items-center gap-3"><button type="button" data-back-dashboard aria-label="Voltar ao início" class="hidden h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 md:flex"><i data-lucide="arrow-left" class="h-4 w-4"></i></button><div><h2 class="text-2xl font-black text-slate-800">Prospecção</h2><p class="mt-1 text-xs font-medium text-slate-500">Fale com seus contatos usando mensagens prontas.</p></div></div>
-        <section class="rounded-[2rem] border border-sky-100 bg-white p-5 shadow-sm"><div class="grid gap-3 md:grid-cols-3"><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Data<input id="prospecting-date" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Listas de contatos<select id="prospecting-list-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Mensagens prontas<select id="prospecting-message-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label></div><p id="prospecting-availability" class="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-[10px] font-bold text-sky-700"></p><div class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Texto da mensagem</p><p id="prospecting-message-preview" class="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600"></p><p class="mt-2 text-[10px] text-slate-400">Ao enviar, uma mensagem selecionada será escolhida aleatoriamente.</p></div></section>
+        <section class="rounded-[2rem] border border-sky-100 bg-white p-5 shadow-sm"><div class="grid gap-3 md:grid-cols-3"><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Data<input id="prospecting-date" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Listas de contatos<select id="prospecting-list-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Mensagens prontas<select id="prospecting-message-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label></div><p id="prospecting-availability" class="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-[10px] font-bold text-sky-700"></p><div class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Texto da mensagem</p><p id="prospecting-message-preview" class="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600"></p><p class="mt-2 text-[10px] text-slate-400">As mensagens selecionadas serão embaralhadas e usadas uma vez cada antes de repetir.</p></div></section>
         <div id="prospecting-contacts" class="space-y-2"></div>
         <section class="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm"><div class="flex items-center justify-between gap-3"><h3 class="text-sm font-black uppercase tracking-wider text-slate-800">Meus conteúdos</h3><span class="text-[10px] font-bold text-slate-400">Somente você pode editar</span></div><div id="prospecting-personal-library" class="mt-3 grid gap-2 md:grid-cols-2"></div></section>
     </section>
@@ -1914,6 +1914,30 @@
         let prospectingSelectedDays = new Set();
         let personalProspectingSelectedDays = new Set();
         let personalProspectingSelectedDates = new Set();
+        const prospectingMessageRotationKey = 'siga-prospecting-message-rotation';
+
+        function shuffleProspectingMessages(messageIds) {
+            const shuffled = [...messageIds];
+            for (let index = shuffled.length - 1; index > 0; index -= 1) {
+                const randomIndex = Math.floor(Math.random() * (index + 1));
+                [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+            }
+            return shuffled;
+        }
+
+        function getNextProspectingMessage(messageOptions, userId) {
+            const availableIds = messageOptions.map(message => message.id);
+            const selectionKey = [...availableIds].sort().join('|');
+            let rotation = {};
+            try { rotation = JSON.parse(localStorage.getItem(prospectingMessageRotationKey)) || {}; } catch { rotation = {}; }
+            const current = rotation[userId];
+            const queue = current?.selectionKey === selectionKey && Array.isArray(current.queue) ? current.queue.filter(id => availableIds.includes(id)) : [];
+            const nextQueue = queue.length ? queue : shuffleProspectingMessages(availableIds);
+            const messageId = nextQueue.shift();
+            rotation[userId] = { selectionKey, queue: nextQueue };
+            localStorage.setItem(prospectingMessageRotationKey, JSON.stringify(rotation));
+            return messageOptions.find(message => message.id === messageId);
+        }
 
         function renderProspectingCalendar() {
             const calendar = document.getElementById('prospecting-calendar');
@@ -2088,8 +2112,8 @@
             const list = lists.find(item => item.id === sourceListId) || lists.find(item => selectedListIds.includes(item.id));
             const contact = list?.contacts?.find(item => item.id === contactId);
             const userId = effectiveUserId();
-            const message = messageOptions[Math.floor(Math.random() * messageOptions.length)];
-            if (!list || !contact || !message || !userId) return showToast('Selecione pelo menos uma lista e uma mensagem antes de enviar.', 'error');
+            if (!list || !contact || !messageOptions.length || !userId) return showToast('Selecione pelo menos uma lista e uma mensagem antes de enviar.', 'error');
+            const message = getNextProspectingMessage(messageOptions, userId);
             const sellerName = getUsuarios().find(user => user.id === userId)?.name || getSession()?.name || 'Vendedor';
             const body = message.body.replace(/\{\{\s*nome\s*\}\}/gi, contact.name).replace(/\{\{\s*(?:vendedor|vendedor_nome)\s*\}\}/gi, sellerName);
             const phone = formatProspectingPhone(contact.phone);
