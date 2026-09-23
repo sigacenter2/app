@@ -123,6 +123,26 @@
         [role="dialog"] > div { max-height: calc(100dvh - 2rem); overflow-y: auto; }
         input, select, textarea { border-color: var(--line); background-color: var(--surface); }
         input::placeholder, textarea::placeholder { color: #a0aec0; }
+        .prospecting-picker {
+            min-height: 7.5rem;
+            padding: 0.35rem;
+            color: #475569;
+            background: #f8fafc;
+            border-color: #dbe4ef;
+            box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
+        }
+        .prospecting-picker option {
+            margin: 0.15rem 0;
+            padding: 0.65rem 0.75rem;
+            border-radius: 0.65rem;
+            font-size: 0.75rem;
+            font-weight: 800;
+        }
+        .prospecting-picker option:checked {
+            color: #075985;
+            background: #e0f2fe linear-gradient(0deg, #e0f2fe, #e0f2fe);
+        }
+        .prospecting-picker:focus { border-color: #38bdf8; box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.12); }
         @media (max-width: 767px) {
             body { padding-bottom: 5.5rem; }
             #app-shell { padding-bottom: 1rem; }
@@ -555,7 +575,7 @@
     <!-- TELA DE PROSPECCAO -->
     <section id="prospecting-page" class="hidden max-w-5xl mx-auto p-4 space-y-6">
         <div class="flex items-center gap-3"><button type="button" data-back-dashboard aria-label="Voltar ao início" class="hidden h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 md:flex"><i data-lucide="arrow-left" class="h-4 w-4"></i></button><div><h2 class="text-2xl font-black text-slate-800">Prospecção</h2><p class="mt-1 text-xs font-medium text-slate-500">Fale com seus contatos usando mensagens prontas.</p></div></div>
-        <section class="rounded-[2rem] border border-sky-100 bg-white p-5 shadow-sm"><div class="grid gap-3 md:grid-cols-3"><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Data<input id="prospecting-date" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Listas de contatos<select id="prospecting-list-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Mensagens prontas<select id="prospecting-message-select" multiple size="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></select></label></div><p id="prospecting-availability" class="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-[10px] font-bold text-sky-700"></p><div class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Texto da mensagem</p><p id="prospecting-message-preview" class="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600"></p><p class="mt-2 text-[10px] text-slate-400">As mensagens selecionadas serão embaralhadas e usadas uma vez cada antes de repetir.</p></div></section>
+        <section class="rounded-[2rem] border border-sky-100 bg-white p-5 shadow-sm"><div class="grid gap-4 md:grid-cols-3"><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Data<input id="prospecting-date" type="date" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none"></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Lista de contatos<span class="mt-1 block text-[9px] font-semibold normal-case tracking-normal text-slate-400">Escolha uma lista por vez</span><select id="prospecting-list-select" size="3" class="prospecting-picker mt-1 w-full rounded-xl border px-2 py-1.5 text-sm font-bold outline-none"></select></label><label class="text-[10px] font-black uppercase tracking-wider text-slate-400">Mensagens prontas<span class="mt-1 block text-[9px] font-semibold normal-case tracking-normal text-slate-400">Selecione somente as mensagens deste envio</span><select id="prospecting-message-select" multiple size="3" class="prospecting-picker mt-1 w-full rounded-xl border px-2 py-1.5 text-sm font-bold outline-none"></select></label></div><p id="prospecting-availability" class="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-[10px] font-bold text-sky-700"></p><div class="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-4"><p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Texto da mensagem</p><p id="prospecting-message-preview" class="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600"></p><p class="mt-2 text-[10px] text-slate-400">As mensagens selecionadas serão embaralhadas e usadas uma vez cada antes de repetir.</p></div></section>
         <div id="prospecting-contacts" class="space-y-2"></div>
         <section class="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm"><div class="flex items-center justify-between gap-3"><h3 class="text-sm font-black uppercase tracking-wider text-slate-800">Meus conteúdos</h3><span class="text-[10px] font-bold text-slate-400">Somente você pode editar</span></div><div id="prospecting-personal-library" class="mt-3 grid gap-2 md:grid-cols-2"></div></section>
     </section>
@@ -2004,6 +2024,7 @@
         }
 
         function renderProspectingPage() {
+            const resetMessages = arguments[0]?.resetMessages === true;
             const listSelect = document.getElementById('prospecting-list-select');
             const messageSelect = document.getElementById('prospecting-message-select');
             if (!listSelect || !messageSelect) return;
@@ -2011,14 +2032,14 @@
             const previousLists = [...listSelect.selectedOptions].map(option => option.value);
             listSelect.innerHTML = lists.length ? lists.map(list => `<option value="${list.id}">${escapeHtml(list.name)}</option>`).join('') : '<option value="">Nenhuma lista disponível hoje</option>';
             const selectedListIds = previousLists.filter(id => lists.some(list => list.id === id));
-            (selectedListIds.length ? selectedListIds : lists.slice(0, 1).map(list => list.id)).forEach(id => { const option = [...listSelect.options].find(item => item.value === id); if (option) option.selected = true; });
+            if (selectedListIds.length) listSelect.value = selectedListIds[0];
             const messages = getProspectingMessages();
             const previousMessages = [...messageSelect.selectedOptions].map(option => option.value);
             messageSelect.innerHTML = messages.length ? messages.map(message => `<option value="${message.id}">${escapeHtml(message.title)}</option>`).join('') : '<option value="">Nenhuma mensagem cadastrada</option>';
-            const selectedMessageIds = previousMessages.filter(id => messages.some(message => message.id === id));
-            (selectedMessageIds.length ? selectedMessageIds : messages.map(message => message.id)).forEach(id => { const option = [...messageSelect.options].find(item => item.value === id); if (option) option.selected = true; });
-            const selectedLists = lists.filter(item => selectedListIds.length ? selectedListIds.includes(item.id) : item.id === lists[0]?.id);
-            const selectedMessages = messages.filter(item => (selectedMessageIds.length ? selectedMessageIds : messages.map(message => message.id)).includes(item.id));
+            const selectedMessageIds = resetMessages ? [] : previousMessages.filter(id => messages.some(message => message.id === id));
+            selectedMessageIds.forEach(id => { const option = [...messageSelect.options].find(item => item.value === id); if (option) option.selected = true; });
+            const selectedLists = lists.filter(item => selectedListIds.includes(item.id));
+            const selectedMessages = messages.filter(item => selectedMessageIds.includes(item.id));
             document.getElementById('prospecting-date').value = prospectingSelectedDate;
             document.getElementById('prospecting-availability').textContent = selectedLists.length ? `${selectedLists.reduce((total, list) => total + assignedProspectingContacts(list).length, 0)} contato(s) nas listas selecionadas.` : 'Nenhuma lista disponível para hoje.';
             const previewMessage = selectedMessages[0];
@@ -2225,8 +2246,17 @@
                     const editingId = document.getElementById('prospecting-editing-id').value;
                     const allLists = readStoredList(prospectingStorageKey);
                     const existing = allLists.find(list => list.id === editingId);
+                    const previousContacts = existing?.contacts || [];
+                    const usedPreviousContactIds = new Set();
                     const contacts = names.map((contactName, index) => {
-                        const oldContact = existing?.contacts?.find(contact => contact.id === `${editingId || 'new'}-${index}`);
+                        const phoneDigits = phones[index].replace(/\D/g, '');
+                        const oldContact = previousContacts.find(contact => {
+                            if (usedPreviousContactIds.has(contact.id)) return false;
+                            const sameId = contact.id === `${editingId || 'new'}-${index}`;
+                            const samePhone = phoneDigits && String(contact.phone || '').replace(/\D/g, '') === phoneDigits;
+                            return sameId || samePhone;
+                        }) || previousContacts[index];
+                        if (oldContact?.id) usedPreviousContactIds.add(oldContact.id);
                         return { id: oldContact?.id || `${editingId || crypto.randomUUID()}-${index}`, name: contactName, phone: phones[index], sentBy: oldContact?.sentBy || [], sentOn: oldContact?.sentOn || {} };
                     });
                     const list = { ...(existing || {}), id: editingId || crypto.randomUUID(), lojaId: session.lojaId, name, days: [...prospectingSelectedDays], contacts, messages: existing?.messages || getProspectingMessages(), createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -2618,7 +2648,7 @@
                 <article class="flex items-center gap-3 rounded-2xl border p-3 ${managerTaskStatusClasses(task)}">
                     <button type="button" data-manager-toggle-task="${task.id}" data-task-owner="${task.vendedorId}" ${isPastTask(task) ? 'disabled' : ''} aria-label="${isPastTask(task) ? 'Tarefa vencida' : task.completed ? 'Reabrir' : 'Concluir'} tarefa" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 ${task.completed ? 'border-emerald-500 bg-emerald-500 text-white' : isPastTask(task) ? 'border-red-400 bg-red-100 text-red-600' : isTaskOverdueRaw(task, new Date()) ? 'border-red-400 bg-red-100 text-red-600' : 'border-amber-400 bg-amber-100 text-amber-600'}">${task.completed ? '<i data-lucide="check" class="w-4 h-4"></i>' : isPastTask(task) ? '<i data-lucide="ban" class="w-4 h-4"></i>' : isTaskOverdueRaw(task, new Date()) ? '<i data-lucide="clock-alert" class="w-4 h-4"></i>' : ''}</button>
                     <div class="min-w-0 flex-1">
-                        <p class="truncate text-xs font-bold ${task.completed ? 'text-emerald-800 line-through' : isTaskOverdueRaw(task, new Date()) ? 'text-red-800' : 'text-slate-700'}">${escapeHtml(task.title)}</p>
+                        <p class="whitespace-normal break-words text-xs font-bold ${task.completed ? 'text-emerald-800 line-through' : isTaskOverdueRaw(task, new Date()) ? 'text-red-800' : 'text-slate-700'}">${escapeHtml(task.title)}</p>
                         <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-400">
                             <span class="flex items-center gap-1"><i data-lucide="clock-3" class="w-3 h-3"></i>${formatTaskTime(task.time)}</span>
                             <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-600">${escapeHtml(task.vendedorNome)}</span>
@@ -4070,7 +4100,7 @@
                     ${task.completed ? '<i data-lucide="check" class="w-4 h-4"></i>' : ''}
                 </button>
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-xs font-bold ${task.completed ? 'text-emerald-800 line-through' : 'text-slate-700'}">${escapeHtml(task.title)}</p>
+                    <p class="whitespace-normal break-words text-xs font-bold ${task.completed ? 'text-emerald-800 line-through' : 'text-slate-700'}">${escapeHtml(task.title)}</p>
                     <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-400">
                         <span class="flex items-center gap-1"><i data-lucide="clock-3" class="w-3 h-3"></i>${formatTaskTime(task.time)}</span>
                         <span>${ownerLabel}</span>
@@ -4967,7 +4997,7 @@
             document.getElementById('nav-conditional').addEventListener('click', () => showPage('conditional'));
             document.getElementById('nav-prospecting').addEventListener('click', () => showPage('prospecting'));
             document.getElementById('prospecting-date').addEventListener('change', event => { prospectingSelectedDate = event.target.value || getLocalDateKey(); renderProspectingPage(); });
-            document.getElementById('prospecting-list-select').addEventListener('change', renderProspectingPage);
+            document.getElementById('prospecting-list-select').addEventListener('change', () => renderProspectingPage({ resetMessages: true }));
             document.getElementById('prospecting-message-select').addEventListener('change', renderProspectingPage);
             document.getElementById('prospecting-contacts').addEventListener('click', event => {
                 const button = event.target.closest('[data-send-prospecting]');
