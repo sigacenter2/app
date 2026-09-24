@@ -2013,9 +2013,9 @@
             const vendors = getUsuarios().filter(user => user.lojaId === session?.lojaId && user.role === 'vendedor').sort((first, second) => first.id.localeCompare(second.id));
             const userId = effectiveUserId();
             if (!userId) return [];
-            if (isPersonalProspectingItem(list)) return (list.contacts || []).map(contact => ({ ...contact, sent: contact.sentOn?.[userId]?.includes(dateKey) || (!contact.sentOn && contact.sentBy?.includes(userId)) }));
+            if (isPersonalProspectingItem(list)) return (list.contacts || []).map(contact => ({ ...contact, sent: contact.sentBy?.includes(userId) || contact.sentOn?.[userId]?.length > 0 }));
             if (!vendors.length) return [];
-            return (list.contacts || []).filter((contact, index) => vendors[index % vendors.length]?.id === userId).map(contact => ({ ...contact, sent: contact.sentOn?.[userId]?.includes(dateKey) || (!contact.sentOn && contact.sentBy?.includes(userId)) }));
+            return (list.contacts || []).filter((contact, index) => vendors[index % vendors.length]?.id === userId).map(contact => ({ ...contact, sent: contact.sentBy?.includes(userId) || contact.sentOn?.[userId]?.length > 0 }));
         }
 
         function formatProspectingPhone(phone) {
