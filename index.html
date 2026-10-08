@@ -3119,7 +3119,8 @@
             const endInput = document.getElementById(`${kind}-week-end`);
             startInput.closest('label')?.classList.toggle('hidden', goals.length > 0);
             endInput.closest('label')?.classList.toggle('hidden', goals.length > 0);
-            const selectedGoal = goals.find(goal => goal.weekStart === start && goal.weekEnd === end) || goals[0];
+            const selectedDate = kind === 'sales' ? salesSelectedDate : serviceSelectedDate;
+            const selectedGoal = resolveActiveWeeklyGoal(goals, selectedDate);
             select.innerHTML = goals.length
                 ? goals.map(goal => `<option value="${goal.id}" ${goal.id === selectedGoal.id ? 'selected' : ''}>${escapeHtml(goal.name || 'Semana')} · ${goal.weekStart} até ${goal.weekEnd}</option>`).join('')
                 : '<option value="">Nenhuma semana cadastrada para você</option>';
@@ -4458,6 +4459,10 @@
         }
 
         function renderSales() {
+            if (salesPeriod === 'week') {
+                renderWeeklyPeriodOptions('sales');
+                renderSalesWeekDays();
+            }
             const periodSales = salesInPeriod().sort((first, second) => second.datetime.localeCompare(first.datetime));
             const total = periodSales.reduce((sum, sale) => sum + Number(sale.value), 0);
             document.getElementById('sales-month-selector').value = salesSelectedMonth;
